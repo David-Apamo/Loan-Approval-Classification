@@ -1,2 +1,28 @@
 # Loan-Approval-Classification
-This repository contains analysis files for Loan Approval Classification project using Machine Learning. The data for this project is an online open source data found on Kaggle.
+
+This repository contains analysis files for Loan Approval Classification project using Machine Learning. The data for this project is an online open source data found on Kaggle. In the highly competitive and risk-laden field of finance, ensuring the reliability of loan approvals is paramount for banks and financial institutions. The proliferation of bad loans can significantly impact the financial stability and profitability of these institutions. To address this challenge, my aim was to develop a robust classification model aimed at predicting loan approval outcomes with high accuracy, using advanced machine learning techniques.
+
+## Models Used:
+* Logistic Regression
+* Naive Bayes Classifier
+* K-Nearest Neighbors (KNN)
+* Random Forest (RF)
+* SVM
+* XGBoost
+
+After tuning and evaluating the models, Random achieved the best performance with anaccuracy of 82.79%, Sensitivity of 80% and a Specificity of 100%.
+
+## Key Processes
+
+* **Data Preprocessing:** Cleaning and preprocessing the data to handle missing values, normalize features, and encode categorical variables.
+* **EDA:** Summarizing the data to obtain measures of centrality, and visualizing the data to gain insights and understand existing patterns.
+* **Feature Engineering:** Data partitioning, feature selection, feature normalization, label encoding categorical features.
+* **Model Selection:** Exploring and selecting the appropriate classification algorithms such as Logistic Regression, Random Forest, Gradient Boosting, etc.
+* **Model Training:** Using the preprocessed dataset to train and fine-tune the model parameters with Cross-validation to optimize performance.
+* **Model Evaluation:** Evaluating the model performance using metrics like accuracy, precision, recall, F1-score, and ROC-AUC.
+
+## Tools and Libraries
+RStudio (tidyverse, janitor, caret, mlr, tidymodels, parallel, parallelMap, pROC, vip, corrplot)
+
+## Contributions
+Contributions to improve the model performance and reliability are welcome. Please fork the repository, make your changes, and submit a pull request.
