@@ -1,6 +1,6 @@
 # Loan-Approval-Classification
 
-This repository contains analysis files for Loan Approval Classification project using Machine Learning. The data for this project is an online open source data found on Kaggle. In the highly competitive and risk-laden field of finance, ensuring the reliability of loan approvals is paramount for banks and financial institutions. The proliferation of bad loans can significantly impact the financial stability and profitability of these institutions. To address this challenge, my aim was to develop a robust classification model aimed at predicting loan approval outcomes with high accuracy, using advanced machine learning techniques.
+This repository contains analysis files for Loan Approval Classification project using Machine Learning. The data for this project is an open source data found on Kaggle. The data has various attributes like loan ID, loan amount, loan amount term, credit history, applicant’s income, co-applicant income, property area, loan amount term, education, number of dependents, marital status, self employment and loan status. In the highly competitive and risk-laden field of finance, ensuring the reliability of loan approvals is paramount for banks and financial institutions. The proliferation of bad loans can significantly impact the financial stability and profitability of these institutions. To address this challenge, my aim was to develop a robust classification model aimed at predicting loan approval outcomes with high accuracy, using advanced machine learning techniques.
 
 ## Models Used:
 * Logistic Regression
@@ -10,7 +10,7 @@ This repository contains analysis files for Loan Approval Classification project
 * SVM
 * XGBoost
 
-After tuning and evaluating the models, **Random Forest** achieved the best performance with an **accuracy of 82.79%**, **Sensitivity of 80%**, **100% Precision** and a **Specificity of 100%**.
+After tuning and evaluating the models, **SVM and XGBoost** achieved the best performance, both with an **accuracy of 82.79%**. However, **SVM** had the best **Precision and Specificity** of **100%** each. The SVM model is very good at identifying/detecting customers who do not qualify for loans, and will help Financial Instititions prevent losses incurred from bad loans.
 
 ## Key Processes
 
@@ -22,7 +22,7 @@ After tuning and evaluating the models, **Random Forest** achieved the best perf
 * **Model Evaluation:** Evaluating the model performance using metrics like accuracy, precision, recall, F1-score, and ROC-AUC.
 
 ## Tools and Libraries
-RStudio (tidyverse, janitor, caret, mlr, tidymodels, parallel, parallelMap, pROC, vip, corrplot)
+RStudio (tidyverse, janitor, caret, mlr, tidymodels, VIM, parallel, parallelMap, pROC, vip, corrplot)
 
 ## Model Application
 
