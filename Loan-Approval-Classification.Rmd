@@ -1,0 +1,760 @@
+---
+title: "Loan Approval Classification"
+author: "David Apamo"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+# Introduction
+
+In the highly competitive and risk-laden field of finance, ensuring the reliability of loan approvals is paramount for banks and financial institutions. The proliferation of bad loans can significantly impact the financial stability and profitability of these institutions. To address this challenge, I propose the development of a robust classification model aimed at predicting loan approval outcomes with high accuracy. By leveraging advanced machine learning techniques, this study will analyze a variety of borrower attributes and historical loan data to distinguish between high-risk and low-risk loan applicants. The objective is to provide a decision-making tool that enhances the precision of loan approvals, thereby mitigating financial losses and fostering sustainable financial growth. This initiative underscores the vital role of data-driven solutions in modern finance, promising significant improvements in risk management and operational efficiency.
+
+```{r}
+# Load packages
+suppressMessages(
+  {
+    library(tidyverse)
+    library(janitor)
+    library(caret)
+    library(mlr)
+    library(tidymodels)
+    library(pROC)
+    library(vip)
+    library(corrplot)
+    library(parallel)
+    library(parallelMap)
+  }
+)
+```
+
+```{r}
+# Import data
+Loan_data <- read.csv("Loan_Data.csv")
+```
+
+```{r}
+# View the structure of the data
+Loan_data |> str()
+```
+
+The data has 614 observations of 13 variables. The variables applicant income, co-applicant income, loan amount, loan amount term and credit history are numeric while the rest of the variables are character.
+
+```{r}
+# View the first six observations
+Loan_data |> head()
+```
+
+## Data Cleaning and Preprocessing
+
+```{r}
+# Check for missing values
+map_dbl(Loan_data, ~sum(is.na(.)))
+```
+
+Only missing values of the numeric features are shown. Loan amount has 22 missing values, loan amount term has 14 missing values while credit history has 50 missing values. The missing values for the character variables aren't recorded as NA hence were not detected.
+
+```{r}
+# Fill in the white spaces in character variables with NA
+Loan_data <- Loan_data |> mutate_if(is.character, ~ na_if(., ""))
+```
+
+```{r}
+# Recount the number of missing values in each column
+map_dbl(Loan_data, ~sum(is.na(.)))
+```
+
+All the missing values are now detected. Gender has 13, married has 3, dependents has 15, self employed has 32, loan amount has 22, loan amount term has 14 and credit history has 50 missing values respectively.
+
+```{r}
+# Check for duplicated observations
+sum(duplicated(Loan_data))
+```
+
+There are no duplicated observations in the data.
+
+```{r}
+# Clean variable names by converting them all to lowercase
+Loan_data <- Loan_data |> clean_names()
+```
+
+```{r}
+# Convert the character variables to factors
+
+# Specify columns to factor
+cols_to_factor <- c("gender", "married", "dependents", "education",
+                    "self_employed", "property_area")
+
+# Convert the specified columns into factors
+Loan_data <- Loan_data |> mutate_at(.vars = cols_to_factor, .fun = factor)
+```
+
+```{r}
+# Factor credit history variable
+Loan_data$credit_history <- factor(Loan_data$credit_history, 
+                                   labels = c("Bad","Good"), 
+                                              levels = c(0,1))
+```
+
+```{r}
+# Convert loan status variable into a binary variable
+Loan_data$loan_status <- ifelse(Loan_data$loan_status == "Y", 1, 0)
+
+# Factor the variable and reverse the order of the labels to begin with the positive class (This is important for model training)
+
+Loan_data$loan_status <- factor(Loan_data$loan_status, 
+                                levels = rev(c(0,1)), 
+                                labels = rev(c("Not Approved", "Approved")))
+```
+
+# Missing Value Imputation
+
+I'll use KNN imputation method because it isn't easy to tell the nature of missingness, whether the values are missing not at random, missing at random or missing completely at random.
+
+```{r}
+# Load the VIM package for missing value imputation
+suppressMessages(library(VIM))
+# Impute based on 5 nearest data points
+df_imputed <- kNN(Loan_data, variable = colnames(Loan_data), 
+                  k = 5)
+```
+
+```{r}
+# Subset the complete data with imputed values (omit loan ID and the logical variables indicating whether a variables has been imputed or not)
+Data <- df_imputed[, 2:13]
+```
+
+
+# EDA
+
+```{r}
+# Generate statistical summary for each and every variable
+summary(Data)
+```
+
+* Of all the customers, females were 113 while males were 501, 401 were married while 213 were not married, 480 were graduates while 134 were not graduates, 82 were self employed while 532 were not self employed.
+* 354 customers had zero dependents, 103 had 1 dependent, 106 had 2 dependents while 51 had 3 or more dependents. 521 customers had good credit history while 93 had bad credit history. 179 customers had properties in rural settings, 233 had properties in semi-urban settings while 202 had properties in urban settings. 422 loans were approved while 192 weren't approved.
+* The median values for applicant's income, co-applicant income, loan amount and loan amount term are 3812, 1188, 127 and 360 respectively.
+
+```{r}
+# Visualize the data
+
+# Select the categorical features and convert them to long format
+Cat_Untidy <- Data |> select(gender, married, dependents, 
+                                  education, self_employed,
+                                  credit_history, property_area, 
+                                  loan_status) |>
+  gather(key = "Variable", value = "Value", -loan_status)
+
+# Plot
+ggplot(Cat_Untidy, aes(Value, fill = loan_status)) + 
+  facet_wrap(~Variable, scales = "free_x") +
+  geom_bar(position = "dodge") + theme_bw()
+```
+
+* Most customers with good credit history had their loan requests approved.
+* Most approved loans were for customers who had zero dependents.
+* Most of the approved loans were for graduates.
+* Most approved loans were for male customers.
+* Most approved loans were for married customers.
+* Also, most approved loans were for customers who weren't self-employed.
+
+```{r}
+# Select the numeric features plus the response var and convert them to long format
+Num_Untidy <- Data |> select(applicant_income, coapplicant_income,
+                                  loan_amount, loan_amount_term,
+                                  loan_status) |>
+  gather(key = "Variable", value = "Value", -loan_status)
+
+# Plot
+ggplot(Num_Untidy, aes(loan_status, as.numeric(Value))) + 
+  facet_wrap(~Variable, scales = "free_y") +
+  geom_boxplot() + theme_bw() + labs(y = "Value")
+
+```
+
+The medians for applicant income, co-applicant income and loan amount were generally low, but had some outliers. On average, most of the approved loans were for individuals who needed lower amounts. However, there are individuals who requested for high loan amounts and their loans were approved. Based on the distribution of the numeric features, the data doesn't seem to be easily separable.
+
+```{r}
+# Plot a histogram of the numeric features
+ggplot(Num_Untidy, aes(as.numeric(Value))) + 
+  facet_wrap(~Variable, scales = "free_x") +
+  geom_histogram() + theme_bw() + 
+  labs(x = "Value", y = "Frequency")
+```
+
+Applicant income, co-applicant income and loan amount are right skewed while loan amount term is left skewed.
+
+```{r}
+# Check for highly correlated features
+
+# Select numeric features
+Numeric_features <- Data |> select(applicant_income, 
+                                        coapplicant_income, 
+                                        loan_amount, 
+                                        loan_amount_term)
+
+# Generate correlation plot
+corrplot(cor(Numeric_features))
+```
+
+There is no multicollinearity between the numeric features.
+
+# Feature Engineering
+
+I'll begin by partitioning the data into training and validation sets using 80/20 split, then prepare the two sets separately to prevent information leakage. I'll also encode the factor variables to numeric because some algorithms like KNN, SVM and XGBoost cannot handle categorical predictors.
+
+```{r}
+## Partition the data into training and test sets
+
+# Assign data a different name
+Encoded_data <- Data
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Split the data (use 80/20 split)
+train_index <- createDataPartition(Encoded_data$loan_status, p = 0.80, 
+                                   list = FALSE)
+# Assign 80% to training set
+training_data <- Encoded_data[train_index, ]
+# Assign the remaining 20% to test set
+test_data <- Encoded_data[-train_index, ]
+```
+
+```{r}
+## Prepare training data
+
+# Encode gender
+training_data[["gender"]] <- factor(training_data[["gender"]], 
+                                labels = c(1,2), 
+                                levels = c("Female", "Male"))
+# Encode married
+training_data[["married"]] <- factor(training_data[["married"]], 
+                                labels = c(0,1), 
+                                levels = c("No", "Yes"))
+# Encode dependents
+training_data[["dependents"]] <- factor(training_data[["dependents"]], 
+                                labels = c(0,1,2,3), 
+                                levels = c("0", "1", "2", "3+"))
+# Encode education
+training_data[["education"]] <- factor(training_data[["education"]], 
+                                labels = c(1,0), 
+                                levels = c("Graduate", "Not Graduate"))
+# Encode self_employed
+training_data[["self_employed"]] <- factor(training_data[["self_employed"]], 
+                                labels = c(0,1), 
+                                levels = c("No", "Yes"))
+# Encode credit_history
+training_data[["credit_history"]] <- factor(training_data[["credit_history"]], 
+                                labels = c(0,1), 
+                                levels = c("Bad", "Good"))
+# Encode property_area
+training_data[["property_area"]] <- factor(training_data[["property_area"]], 
+                                labels = c(1,2,3), 
+                                levels = c("Rural", "Semiurban", "Urban"))
+
+```
+
+```{r}
+# Convert the encoded predictor variables to numeric
+predictors <- training_data |> select(-loan_status) |> 
+  mutate_if(is.factor, ~ as.numeric(.))
+
+# Add column with the target variable
+training_data <- predictors |> mutate(loan_status = training_data$loan_status)
+```
+
+```{r}
+## Prepare test data
+
+# Encode gender
+test_data[["gender"]] <- factor(test_data[["gender"]], 
+                                labels = c(1,2), 
+                                levels = c("Female", "Male"))
+# Encode married
+test_data[["married"]] <- factor(test_data[["married"]], 
+                                labels = c(0,1), 
+                                levels = c("No", "Yes"))
+# Encode dependents
+test_data[["dependents"]] <- factor(test_data[["dependents"]], 
+                                labels = c(0,1,2,3), 
+                                levels = c("0", "1", "2", "3+"))
+# Encode education
+test_data[["education"]] <- factor(test_data[["education"]], 
+                                labels = c(1,0), 
+                                levels = c("Graduate", "Not Graduate"))
+# Encode self_employed
+test_data[["self_employed"]] <- factor(test_data[["self_employed"]], 
+                                labels = c(0,1), 
+                                levels = c("No", "Yes"))
+# Encode credit_history
+test_data[["credit_history"]] <- factor(test_data[["credit_history"]], 
+                                labels = c(0,1), 
+                                levels = c("Bad", "Good"))
+# Encode property_area
+test_data[["property_area"]] <- factor(test_data[["property_area"]], 
+                                labels = c(1,2,3), 
+                                levels = c("Rural", "Semiurban", "Urban"))
+```
+
+```{r}
+# Convert the encoded predictor variables to numeric
+predictors <- test_data |> select(-loan_status) |> 
+  mutate_if(is.factor, ~ as.numeric(.))
+
+# Add column with the target variable
+test_data <- predictors |> mutate(loan_status = test_data$loan_status)
+```
+
+
+# Model Training
+
+I'll try six different algorithms i.e. Logistic Regression, Naive Bayes, KNN, RF, SVM and XGBoost.
+
+```{r}
+# Define a classification task
+LoanTask <- makeClassifTask(data = training_data, 
+                            target = "loan_status")
+```
+
+# Logistic Regression model
+
+I'll use Logistic Regression as my basis model. I'll make use of cross-validation when training my models to assess the generalization ability of the models on new, unseen data. When setting random seed number for reproducibility, I'll reset the number to use same seed number. This will make sure that the results are directly comparable.
+
+```{r}
+# Define learner
+logReg <- makeLearner("classif.logreg", predict.type = "prob")
+```
+
+```{r}
+# Train the model
+logRegModel <- train(logReg, LoanTask)
+```
+
+```{r}
+# Cross-validate the model training process
+
+# Set seed for reproducibility
+set.seed(1234)
+
+# Define a 6-fold resampling description
+kFold <- makeResampleDesc(method = "RepCV", folds = 6, 
+                          reps = 60, stratify = TRUE)
+
+# Cross-validate
+logRegCV <- resample(learner = logReg, task = LoanTask, 
+                             resampling = kFold, 
+                             measures = list(mmce, acc, fpr, fnr), 
+                     show.info = FALSE)
+
+# View cross_validation results
+logRegCV$aggr
+```
+
+The model generalizes well. It has an accuracy of 81.19% and a False Negative Rate of 2.43%. However, FPR is very high.
+
+
+# Naive Bayes model
+
+```{r}
+# Define learner
+naiveLearner <- makeLearner("classif.naiveBayes", predict.type = "prob")
+```
+
+```{r}
+# Train the model
+bayesModel <- train(naiveLearner, LoanTask)
+```
+
+```{r}
+# Cross-validate the model training procedure
+set.seed(1234)
+bayesCV <- resample(learner = naiveLearner, task = LoanTask, 
+                    resampling = kFold, measures = list(mmce, acc, fpr, fnr), 
+                    show.info = FALSE)
+# Check performance
+bayesCV$aggr
+```
+
+The model does not perform better than the Logistic Regression model (has an accuracy of 80.64%). The accuracy is slightly lower than that of Logistic Regression, which is the basis model.
+
+# KNN model
+
+```{r}
+# Define learner
+knnLearner <- makeLearner("classif.knn")
+```
+
+```{r}
+# Define hyperparameter space for tuning k
+knnParamSpace <- makeParamSet(makeDiscreteParam("k", values = 1:30))
+
+# Define search strategy
+gridSearch <- makeTuneControlGrid()
+
+# Define CV for tuning
+cvForTuning <- makeResampleDesc("RepCV", folds = 6, reps = 60, stratify = TRUE)
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(1234)
+
+# Tune the model with cross-validation
+tunedK <- tuneParams(learner = knnLearner, task = LoanTask, 
+                     resampling = cvForTuning, 
+                     par.set = knnParamSpace, 
+                     control = gridSearch,
+                     measures = list(mmce, acc, fpr, fnr), 
+                     show.info = FALSE)
+
+# Obtain the optimal hyperparameter
+tunedK$x
+```
+
+The optimal value of k is 29.
+
+```{r}
+# Print CV results
+tunedK$y
+```
+
+KNN model doesn't perform well. It has a lower accuracy and a very high false positive rate which is worse. The basis model has a much better performance than this KNN model.
+
+```{r}
+# Extract model information
+knnTuningData <- generateHyperParsEffectData(tunedK)
+
+# Visualize the model tuning process
+plotHyperParsEffect(knnTuningData, x = "k", y = "mmce.test.mean",
+plot.type = "line") +
+theme_bw()
+```
+
+Mmce value is least at k = 29.
+
+```{r}
+# Set hyperparameters for the final model
+tunedKnn <- setHyperPars(makeLearner("classif.knn"), 
+                         par.vals = tunedK$x)
+# Train the final model
+tunedKnnModel <- train(tunedKnn, LoanTask)
+```
+
+# Random Forest
+
+```{r}
+# Define learner
+rf_learner <- makeLearner("classif.randomForest", predict.type = "prob")
+```
+
+```{r}
+# Define hyperparameter space for tuning
+rf_ParamSpace <- makeParamSet(makeIntegerParam("ntree", lower = 200, 
+                                                  upper = 200),
+                                 makeIntegerParam("mtry", lower = 4, 
+                                                  upper = 15), 
+                                 makeIntegerParam("nodesize", lower = 2, 
+                                                  upper = 15),
+                                 makeIntegerParam("maxnodes", lower = 3, 
+                                                  upper = 25))
+```
+
+```{r}
+# Define search strategy to use random search with 200 iterations
+randSearch <- makeTuneControlRandom(maxit = 200)
+
+# Define a 6-fold resampling description
+cvForTuning <- makeResampleDesc("CV", iters = 6, stratify = TRUE)
+```
+
+```{r}
+# Begin parallelization
+parallelStartSocket(cpus = detectCores())
+
+# Set random seed for reproducibility
+set.seed(1234)
+
+# Perform hyperparameter tuning
+tuned_rf_Pars <- tuneParams(learner = rf_learner, task = LoanTask, 
+                            resampling = cvForTuning, 
+                            par.set = rf_ParamSpace, 
+                            control = randSearch, 
+                            measures = list(mmce, acc, fpr, fnr), 
+                            show.info = FALSE)
+
+# Stop parallelization
+parallelStop()
+```
+
+```{r}
+# View cross-validation results
+tuned_rf_Pars
+```
+
+The random Forest model also generalizes well. It has a mean misclassification error rate of 18.69%, which is slightly lower than that of the Logistic Regression model. The model however, has a higher false positive rate.
+
+The Random Forest model has a slightly better performance than the basis model (Logistic regression model).
+
+```{r}
+# Set the optimal hyperparameters for the final model
+tuned_rf <- setHyperPars(rf_learner, par.vals = tuned_rf_Pars$x)
+
+# Train the final model using the optimal hyperparameters
+tuned_rf_Model <- train(tuned_rf, LoanTask)
+
+```
+
+```{r}
+# Check if there are enough trees in the Random Forest
+
+# First extract model information
+rfModelData <- getLearnerModel(tuned_rf_Model)
+
+# Plot mmce vs number of trees
+plot(rfModelData)
+```
+
+The mean out-of-bag error stabilizes too early, at about 30 trees. I have enough number of trees in the forest (in fact many). The positive class has a very high mean out-of-bag error rate.
+
+
+# SVM model
+
+```{r}
+# Define learner
+svmLearner <- makeLearner("classif.svm", predict.type = "prob")
+```
+
+```{r}
+# Define hyperparameter space for tuning the model
+kernels <- c("polynomial", "radial", "sigmoid")
+svmParamSpace <- makeParamSet(makeDiscreteParam("kernel", values = kernels), 
+                              makeIntegerParam("degree", lower = 1, upper = 4), 
+                              makeNumericParam("cost", lower = 0.1, upper = 12), 
+                              makeNumericParam("gamma", lower = 0.1, 7))
+```
+
+```{r}
+# Define search strategy to use random search with 100 iterations
+# Note that SVM is computationally expensive
+randSearch <- makeTuneControlRandom(maxit = 100)
+
+# Define CV strategy
+cvForTuning <- makeResampleDesc("CV", iters = 6, stratify = TRUE)
+```
+
+```{r}
+# Set random seed for reproducibility
+set.seed(1234)
+
+# Start parallelization
+parallelStartSocket(cpus = detectCores())
+
+# Perform hyperparameter tuning with cross-validation
+tunedSvmPars <- tuneParams(learner =  svmLearner, task = LoanTask, 
+                           resampling = cvForTuning, 
+                           par.set = svmParamSpace, 
+                           control = randSearch,
+                           measures = list(mmce, acc, fpr, fnr), 
+                           show.info = FALSE)
+
+# Stop parallelization
+parallelStop()
+```
+
+```{r}
+# View tuning results
+tunedSvmPars
+```
+
+SVM with polynomial kernel of degree 1 is the optimal model. The SVM model has the same performance as Random Forest (mmce value of 18.69%, accuracy of 81.3%).
+
+```{r}
+# Use the optimal hyperparameters to train the final model
+
+# Set the optimal hyperparameters for the final model
+tunedSvm <- setHyperPars(learner =  svmLearner, par.vals = tunedSvmPars$x)
+
+# Train the final model
+tunedSvmModel <- train(tunedSvm, LoanTask)
+```
+
+
+# XGBoost
+
+```{r}
+# Define learner
+XGB <- makeLearner("classif.xgboost", predict.type = "prob")
+```
+
+```{r}
+# Define hyperparameter space for tuning the model
+xgbParamSpace <- makeParamSet(
+makeNumericParam("eta", lower = 0, upper = 1),
+makeNumericParam("gamma", lower = 0, upper = 7),
+makeIntegerParam("max_depth", lower = 1, upper = 10),
+makeNumericParam("min_child_weight", lower = 1, upper = 10),
+makeNumericParam("subsample", lower = 0.5, upper = 1),
+makeNumericParam("colsample_bytree", lower = 0.5, upper = 1),
+makeIntegerParam("nrounds", lower = 20, upper = 100))
+```
+
+```{r}
+# Define search strategy to use random search
+randSearch <- makeTuneControlRandom(maxit = 700)
+
+# Make resampling description for CV
+cvForTuning <- makeResampleDesc("CV", iters = 6, stratify = TRUE)
+
+# Set random seed for reproducibility
+set.seed(1234)
+
+# Tune the model with cross-validation
+tunedXgbPars <- tuneParams(learner = XGB, task = LoanTask, 
+                           resampling = cvForTuning, 
+                           par.set = xgbParamSpace, 
+                           control = randSearch,
+                           measures = list(mmce, acc, fpr, fnr), 
+                           show.info = FALSE)
+# Check performance
+tunedXgbPars$y
+```
+
+XGBoost performs better than Logistic Regression, SVM and RF. XGBoost outperforms all the other algorithms.
+
+```{r}
+# Train the final model using optimal hyperparameters
+
+# Set the optimal hyperparameters for the final model
+tunedXgb <- setHyperPars(XGB, par.vals = tunedXgbPars$x)
+
+# Train the final model
+tunedXgbModel <- train(tunedXgb, LoanTask)
+```
+
+```{r}
+# Check if there are enough trees for the model
+
+# Extract model information
+xgbModelData <- getLearnerModel(tunedXgbModel)
+
+# Plot
+ggplot(xgbModelData$evaluation_log, aes(iter, train_logloss)) + 
+  geom_line() + geom_point()
+```
+
+Log loss stabilizes after the 34th iteration. I used enough trees.
+
+
+# Model Validation
+
+I'll use the best three performing models to make predictions on test data.
+
+```{r}
+# Use the RF model to make predictions on test data
+rfPreds <- predict(tuned_rf_Model, newdata = test_data)
+
+# Collect prediction
+rfPreds_data <- rfPreds$data
+```
+
+```{r}
+# Calculate confusion matrix
+confusionMatrix(table(rfPreds_data$truth, rfPreds_data$response))
+```
+
+Random Forest model has a validation accuracy of 81.97%. This model is good at identifying customers who do not qualify for a loan (has a Specificity of 94.4%).
+
+```{r}
+# Calculate ROC AUC
+rfPreds_data |> roc_auc(truth = truth, prob.Approved)
+```
+
+The ROC AUC value for RF isn't very good.
+
+```{r}
+# Plot ROC curve
+rfPreds_data |> roc_curve(truth = truth, prob.Approved) |> autoplot()
+```
+
+The ROC curve looks good, even though it's further from the top left corner where ROC AUC value is 1.
+
+```{r}
+# Variable importance plot for RF
+vip(tuned_rf_Model)
+```
+
+Based on the Random Forest algorithm, the most important predictors of loan approval status include credit history, loan amount, co-applicant income, applicant's income, property area, loan amount term, education, number of dependents, marital status and self employment respectively.
+
+```{r}
+# Use the SVM model to make predictions on test data
+svmPreds <- predict(tunedSvmModel, newdata = test_data)
+
+# Collect prediction
+svmPreds_data <- svmPreds$data
+```
+
+```{r}
+# Calculate confusion matrix
+confusionMatrix(table(svmPreds_data$truth, svmPreds_data$response))
+```
+
+SVM model has a validation accuracy of 82.79%. This model is very good at identifying customers who do not qualify for a loan (has a Specificity of 1). Precision(PPV) of 1 is very good, and a Sensitivity of 0.8 is also good.
+
+```{r}
+# Calculate ROC AUC
+svmPreds_data |> roc_auc(truth = truth, prob.Approved)
+```
+
+ROC AUC value of 0.759 isn't that bad.
+
+```{r}
+# Plot ROC curve
+svmPreds_data |> roc_curve(truth = truth, prob.Approved) |> autoplot()
+```
+
+```{r}
+# Use the XGB model to make predictions on test data
+xgbPreds <- predict(tunedXgbModel, newdata = test_data)
+
+# Collect prediction
+xgbPreds_data <- xgbPreds$data
+```
+
+```{r}
+# Calculate confusion matrix
+confusionMatrix(table(xgbPreds_data$truth, xgbPreds_data$response))
+```
+
+XGBoost has the same validation accuracy as the SVM model. XGBoost has a slightly better Sensitivity than SVM, but a slightly lower Precision and Specificity.
+
+```{r}
+# Calculate ROC AUC
+xgbPreds_data |> roc_auc(truth = truth, prob.Approved)
+```
+
+XGBoost model has a better ROC AUC value than SVM model (0.77 compared to 0.75).
+
+```{r}
+# Plot ROC curve
+xgbPreds_data |> roc_curve(truth = truth, prob.Approved) |> autoplot()
+```
+
+The lower part of the ROC curve doesn't look good.
+
+```{r}
+# Variable importance plot for XGBoost
+vip(tunedXgbModel)
+```
+
+The most important predictors of loan approval status are credit history, applicant income, loan amount, co-applicant income, property area, number of dependents and marital status respectively.
+
+* I'll pick the SVM model because it has the best Precision and Specificity. The model is good at identifying/detecting customers who do not qualify for loans. This is in-line with my objective, which was to build a classification model that can help banks and other financial institutions to mitigate loses incurred from bad loans.
+
+* NB: The limitation of this analysis however, is that I did not handle class imbalance in the data.
+
+
+# Model Application
+
+The model will be useful for banks and money lending companies, as it will help them to identify customers who do not qualify for loans. This will prevent them from issuing bad loans hence reducing losses incurred from loan defaults.
+
