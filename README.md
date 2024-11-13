@@ -10,7 +10,7 @@ This repository contains analysis files for Loan Approval Classification project
 * SVM
 * XGBoost
 
-After tuning and evaluating the models, Random achieved the best performance with anaccuracy of 82.79%, Sensitivity of 80% and a Specificity of 100%.
+After tuning and evaluating the models, **Random Forest** achieved the best performance with an **accuracy of 82.79%**, **Sensitivity of 80%**, **100% Precision** and a **Specificity of 100%**.
 
 ## Key Processes
 
@@ -23,6 +23,10 @@ After tuning and evaluating the models, Random achieved the best performance wit
 
 ## Tools and Libraries
 RStudio (tidyverse, janitor, caret, mlr, tidymodels, parallel, parallelMap, pROC, vip, corrplot)
+
+## Model Application
+
+The model will be useful for Banks and money lending companies, as it will help them to identify customers who do not qualify for loans and prevent them from issuing bad loans, hence reducing losses incurred from loan defaults.
 
 ## Contributions
 Contributions to improve the model performance and reliability are welcome. Please fork the repository, make your changes, and submit a pull request.
