@@ -10,7 +10,7 @@ This repository contains analysis files for Loan Approval Classification project
 * SVM
 * XGBoost
 
-After tuning and evaluating the models, **RSVM and XGBoost** achieved the best performance, both with an **accuracy of 82.79%**. However, **SVM** had the best **Precision and Specificity** of **100%** each. The SVM model is very good at identifying/detecting customers who do not qualify for loans.
+After tuning and evaluating the models, **SVM and XGBoost** achieved the best performance, both with an **accuracy of 82.79%**. However, **SVM** had the best **Precision and Specificity** of **100%** each. The SVM model is very good at identifying/detecting customers who do not qualify for loans, and will help Financial Instititions prevent losses incurred from bad loans.
 
 ## Key Processes
 
